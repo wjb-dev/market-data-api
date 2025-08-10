@@ -1,0 +1,16 @@
+apiVersion: v2
+name: market-data-api
+description: A stateless micro‑service delivering your dreams.
+type: application
+version: 0.1.0
+appVersion: "local"
+
+
+dependencies:
+
+
+  - name: redis
+    version: 21.2.6 # or the latest compatible version
+    repository: https://charts.bitnami.com/bitnami
+
+

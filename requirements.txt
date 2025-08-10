@@ -1,0 +1,30 @@
+fastapi[all]~=0.115.14
+uvicorn[standard]~=0.30.6
+
+# FastAPI’s TestClient
+requests
+
+# Pydantic BaseSettings for config
+pydantic~=2.11.7
+pydantic-settings~=2.9.1
+
+# Testing
+pytest~=8.4.1
+pytest-asyncio>=0.20.0
+
+# Shared internal tooling
+haraka[PyFast]==0.2.62
+
+# Core async support
+asyncio~=3.4.3
+
+# .env loading
+python-dotenv~=0.21.0
+
+# Typing (for older environments)
+typing~=3.7.4.3
+
+# Redis support
+redis~=6.2.0
+
+

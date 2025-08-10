@@ -1,0 +1,38 @@
+
+
+
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: market-data-api
+
+build:
+  artifacts:
+    - image: market-data-api-python
+      context: .
+      docker:
+        dockerfile: Dockerfile
+
+manifests:
+  helm:
+    releases:
+      - name: market-data-api
+        chartPath: chart/
+        skipBuildDependencies: true
+        setValues:
+          image:
+            repository: market-data-api-python
+            tag: local
+
+portForward:
+  - resourceType: service
+    resourceName: market-data-api-market-data-api
+    port: 8000
+
+profiles:
+  - name: dev
+    activation:
+      - kubeContext: kind-*
+    build:
+      local:
+        push: false
