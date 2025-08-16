@@ -5,7 +5,8 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 
 from src.app.clients.alpaca_client import AlpacaClient
-from src.app.services.prices_service import PricesService
+from src.app.services.candles_service import CandlesService
+from src.app.services.quotes_service import QuotesService
 
 
 class Settings(BaseSettings):
@@ -23,6 +24,10 @@ class Settings(BaseSettings):
     alpaca_data_base_url: str = Field(default="https://data.alpaca.markets/v2", alias="ALPACA_BASE_URL")
     alpaca_feed: str = Field(default="iex", alias="ALPACA_FEED", description="Data feed type: iex (free) or sip (pro)")
     alpaca_timeout: float = Field(default=8.0, alias="ALPACA_TIMEOUT")
+    
+    # Redis settings
+    redis_url: str = Field(default="redis://localhost:6379", alias="REDIS_URL", description="Redis connection URL")
+    redis_enabled: bool = Field(default=True, alias="REDIS_ENABLED", description="Enable Redis caching")
 
     class Config:
         env_file = ".env"
@@ -57,9 +62,14 @@ def get_alpaca_client() -> AlpacaClient:
     return _alpaca_client
 
 
-def get_alpaca() -> PricesService:
-    """Get PricesService with singleton AlpacaClient."""
-    return PricesService(alpaca_client=get_alpaca_client())
+def get_alpaca() -> CandlesService:
+    """Get CandlesService with singleton AlpacaClient (default service)."""
+    return CandlesService(alpaca_client=get_alpaca_client())
+
+
+def get_quotes_service() -> QuotesService:
+    """Get QuotesService with singleton AlpacaClient."""
+    return QuotesService(alpaca_client=get_alpaca_client())
 
 
 async def cleanup_alpaca_client():

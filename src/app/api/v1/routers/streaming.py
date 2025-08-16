@@ -66,27 +66,30 @@ async def sse_event_generator(symbols: List[str]):
     try:
         # Check if streaming is enabled
         if not get_settings().alpaca_streaming_enabled:
-            yield f"event: error\ndata: {json.dumps({'error': 'streaming_disabled', 'message': 'Real-time streaming is disabled'})}\n\n"
-            return
+            # REMOVE FALLBACK - let it fail when streaming is disabled
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Real-time streaming is disabled"
+            )
 
         # Create streaming service
         prices_service = get_alpaca()
         streaming_service = create_streaming_service(prices_service)
 
-        # Send initial connection event
-        yield f"event: connected\ndata: {json.dumps({'symbols': symbols, 'status': 'connecting'})}\n\n"
+        # Pre-format connection event for better performance
+        connection_data = json.dumps({'symbols': symbols, 'status': 'connecting'})
+        yield f"event: connected\ndata: {connection_data}\n\n"
 
         # Stream price data
         async for event in streaming_service.stream_prices(symbols):
             event_type = event.get("event", "data")
             event_data = event.get("data", {})
 
-            # Format as SSE
-            sse_event = f"event: {event_type}\ndata: {json.dumps(event_data)}\n\n"
-            yield sse_event
+            # Pre-format event data for better performance
+            event_json = json.dumps(event_data)
+            yield f"event: {event_type}\ndata: {event_json}\n\n"
 
-            # Add small delay to prevent overwhelming
-            await asyncio.sleep(0.01)
+            # No artificial delay - optimize for latency
 
     except StreamingError as e:
         logger.error(f"Streaming error: {e}")

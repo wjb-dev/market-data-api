@@ -7,7 +7,8 @@ from typing import List, Optional, Union, Dict, Any
 from enum import Enum
 from pydantic import BaseModel, Field
 
-from src.app.schemas.quote import Quote
+from src.app.schemas.quote import Quote, QuoteData
+from src.app.schemas.candle import Candle
 
 
 class MessageType(str, Enum):
@@ -55,6 +56,21 @@ class QuoteMessage(BaseStockMessage):
     bp: float = Field(..., description="Bid price")
     bs: int = Field(..., description="Bid size in round lots")
     c: List[str] = Field(..., description="Quote conditions")
+    
+    def to_quote_data(self) -> QuoteData:
+        """Convert to QuoteData format"""
+        from src.app.schemas.quote import QuoteData
+        return QuoteData(
+            timestamp=datetime.fromisoformat(self.t.replace("Z", "+00:00")),
+            ask_exchange=self.ax,
+            ask_price=self.ap,
+            ask_size=self.as_,
+            bid_exchange=self.bx,
+            bid_price=self.bp,
+            bid_size=self.bs,
+            conditions=self.c,
+            tape=self.z
+        )
 
 
 class BarMessage(BaseStockMessage):
@@ -67,6 +83,20 @@ class BarMessage(BaseStockMessage):
     v: int = Field(..., description="Volume")
     vw: float = Field(..., description="Volume-weighted average price")
     n: int = Field(..., description="Number of trades")
+    
+    def to_candle(self) -> Candle:
+        """Convert to Candle format"""
+        from src.app.schemas.candle import Candle
+        return Candle(
+            timestamp=datetime.fromisoformat(self.t.replace("Z", "+00:00")),
+            open=self.o,
+            high=self.h,
+            low=self.l,
+            close=self.c,
+            volume=float(self.v),
+            vwap=self.vw,
+            changePercent=0.0  # Default for now, can be calculated if needed
+        )
 
 
 class StatusMessage(BaseStockMessage):

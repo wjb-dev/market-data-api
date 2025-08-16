@@ -12,7 +12,7 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 
 # Import your existing models and services
 from src.app.clients.alpaca_client import AlpacaClient, AlpacaError
-from src.app.services.prices_service import PricesService
+from src.app.services.quotes_service import QuotesService
 from src.app.schemas.quote import Quote
 from src.app.schemas.streaming import (
     StockMessage, StreamingQuote, SubscriptionRequest, AuthRequest,
@@ -50,16 +50,13 @@ class AlpacaStreamingClient:
         # Build WebSocket URL according to Alpaca docs
         if sandbox:
             self.ws_url = f"wss://stream.data.sandbox.alpaca.markets/v2/{feed}"
-        elif feed == "test":
-            # Use dedicated test stream for development
-            self.ws_url = "wss://stream.data.alpaca.markets/v2/test"
         else:
             self.ws_url = f"wss://stream.data.alpaca.markets/v2/{feed}"
 
     async def connect(self) -> bool:
         """Connect and authenticate with Alpaca WebSocket"""
         async with self._connection_lock:
-            if self.connected:
+            if self.connected and self.websocket and not self.websocket.closed:
                 return True
 
             try:
@@ -67,9 +64,9 @@ class AlpacaStreamingClient:
 
                 self.websocket = await websockets.connect(
                     self.ws_url,
-                    ping_interval=20,
-                    ping_timeout=10,
-                    close_timeout=10
+                    ping_interval=30,  # Less frequent pings for better performance
+                    ping_timeout=5,    # Faster timeout detection
+                    close_timeout=5    # Faster cleanup
                 )
 
                 # Wait for initial connection message
@@ -238,8 +235,8 @@ class StreamingPriceAggregator:
     Aggregates streaming data with snapshot data to create complete PriceQuote objects
     """
 
-    def __init__(self, prices_service: PricesService):
-        self.prices_service = prices_service
+    def __init__(self, quotes_service: QuotesService):
+        self.quotes_service = quotes_service
         self.streaming_quotes: Dict[str, StreamingQuote] = {}
         self.base_quotes: Dict[str, Quote] = {}
         self._lock = asyncio.Lock()
@@ -277,11 +274,11 @@ class StreamingPriceAggregator:
             # Get base quote if we don't have it
             if symbol not in self.base_quotes:
                 try:
-                    base_quote = await self.prices_service.get_price_quote(symbol)
+                    base_quote = await self.quotes_service.get_price_quote(symbol)
                     self.base_quotes[symbol] = base_quote
                 except AlpacaError as e:
                     logger.warning(f"Failed to get base quote for {symbol}: {e}")
-                    # Create minimal base quote
+                    # Create minimal base quote using Quote schema
                     from src.app.schemas.quote import QuoteData
                     self.base_quotes[symbol] = Quote(
                         symbol=symbol,
@@ -334,10 +331,10 @@ class StreamingService:
     Main streaming service that integrates with existing PricesService
     """
 
-    def __init__(self, prices_service: PricesService):
-        self.prices_service = prices_service
+    def __init__(self, quotes_service: QuotesService):
+        self.quotes_service = quotes_service
         self.client: Optional[AlpacaStreamingClient] = None
-        self.aggregator = StreamingPriceAggregator(prices_service)
+        self.aggregator = StreamingPriceAggregator(quotes_service)
         self._lock = asyncio.Lock()
 
     async def get_client(self) -> AlpacaStreamingClient:
@@ -370,6 +367,10 @@ class StreamingService:
 
     async def stream_prices(self, symbols: List[str]) -> AsyncGenerator[Dict[str, Any], None]:
         """Stream price data for symbols as SSE events"""
+        import time
+        start_time = time.time()
+        message_count = 0
+        
         try:
             client = await self.get_client()
 
@@ -380,23 +381,35 @@ class StreamingService:
 
             # Listen for messages and convert to events
             async for message in client.listen():
-                if message and hasattr(message, 'S') and message.S in symbols:
-                    # Update aggregator and get merged quote
-                    merged_quote = await self.aggregator.update_from_message(message)
+                # Early return for invalid messages
+                if not message or not hasattr(message, 'S') or message.S not in symbols:
+                    continue
+                    
+                # Update aggregator and get merged quote
+                merged_quote = await self.aggregator.update_from_message(message)
 
-                    if merged_quote:
-                        # Yield simplified price event
-                        yield {
-                            "event": "price",
-                            "data": merged_quote.model_dump(mode='json')
-                        }
+                if merged_quote:
+                    # Pre-serialize data for better performance
+                    quote_data = merged_quote.model_dump(mode='json')
+                    yield {
+                        "event": "price",
+                        "data": quote_data
+                    }
 
-                    # Also yield raw message for advanced clients
-                    if not isinstance(message, (SuccessMessage, ErrorMessage, SubscriptionMessage)):
-                        yield {
-                            "event": "raw",
-                            "data": message.model_dump(mode='json')
-                        }
+                # Also yield raw message for advanced clients (pre-serialized)
+                if not isinstance(message, (SuccessMessage, ErrorMessage, SubscriptionMessage)):
+                    raw_data = message.model_dump(mode='json')
+                    yield {
+                        "event": "raw",
+                        "data": raw_data
+                    }
+                
+                # Performance monitoring
+                message_count += 1
+                if message_count % 100 == 0:  # Log every 100 messages
+                    elapsed = time.time() - start_time
+                    rate = message_count / elapsed if elapsed > 0 else 0
+                    logger.info(f"Streaming performance: {message_count} messages in {elapsed:.2f}s ({rate:.1f} msg/s)")
 
         except Exception as e:
             logger.error(f"Error in price streaming: {e}")
@@ -414,12 +427,9 @@ class StreamingService:
             quote = await self.aggregator.get_current_quote(symbol)
 
             if not quote:
-                # Fallback to snapshot API
-                try:
-                    quote = await self.prices_service.get_price_quote(symbol)
-                except AlpacaError as e:
-                    logger.warning(f"Failed to get quote for {symbol}: {e}")
-                    continue
+                # REMOVE FALLBACK - let streaming failures surface
+                logger.error(f"No real-time quote available for {symbol} - streaming service failed")
+                continue
 
             if quote:
                 quotes[symbol] = quote
@@ -446,24 +456,24 @@ class StreamingService:
             await self.client.close()
 
 
-# Factory function to create streaming service from existing PricesService
-def create_streaming_service(prices_service: PricesService) -> StreamingService:
-    """Create a StreamingService that uses an existing PricesService for configuration"""
-    return StreamingService(prices_service)
+# Factory function to create streaming service from existing QuotesService
+def create_streaming_service(quotes_service: QuotesService) -> StreamingService:
+    """Create a StreamingService that uses an existing QuotesService for configuration"""
+    return StreamingService(quotes_service)
 
 
 # Global instance management (similar to your existing patterns)
 _streaming_service: Optional[StreamingService] = None
 
 async def get_streaming_service() -> StreamingService:
-    """Get global streaming service instance using existing PricesService"""
+    """Get global streaming service instance using existing QuotesService"""
     global _streaming_service
 
     if _streaming_service is None:
-        # Create PricesService using same pattern as your existing code
-        from src.app.core.config import get_alpaca
-        prices_service = get_alpaca()
+        # Create QuotesService using same pattern as your existing code
+        from src.app.core.config import get_quotes_service
+        quotes_service = get_quotes_service()
 
-        _streaming_service = create_streaming_service(prices_service)
+        _streaming_service = create_streaming_service(quotes_service)
 
     return _streaming_service
