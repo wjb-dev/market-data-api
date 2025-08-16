@@ -7,12 +7,12 @@ app = create_app()
 # Optional entry point for programmatically running the app
 if __name__ == "__main__":
     import uvicorn
-    from src.app.core.config import settings
+    from src.app.core.config import get_settings
 
     uvicorn.run(
         "src.app.main:app",
         host="0.0.0.0",
-        port=int(settings.port),
+        port=int(get_settings().port),
         reload=True
     )
 

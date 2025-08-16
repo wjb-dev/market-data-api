@@ -2,14 +2,15 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-from src.app.core.config import settings
+from src.app.core.config import get_settings
 from src.app.core.routers import include_routers
 from src.app.core.runtime import runtime
 from src.app.swagger_config.configurator import custom_openapi
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    
+
+    settings = get_settings()
 
     await runtime.start(settings, app)
     yield
@@ -17,9 +18,9 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title=settings.app_name,
-        version=settings.version,
-        description=settings.description,
+            title=get_settings().app_name,
+    version=get_settings().version,
+    description=get_settings().description,
         openapi_url="/openapi.json",
         docs_url="/market-data-api/docs",
         redoc_url=None,
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    settings = get_settings()
     app.openapi = lambda: custom_openapi(app=app, settings=settings)
     include_routers(app)
     return app
