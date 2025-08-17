@@ -4,7 +4,7 @@ Based on: https://docs.alpaca.markets/reference/stocklatestquotesingle-1
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -40,3 +40,49 @@ class Quote(BaseModel):
     # Additional metadata
     status: str = Field("success", description="Quote status")
     timestamp: datetime = Field(..., description="Response timestamp")
+
+
+class VolumeAnalysis(BaseModel):
+    """Volume analysis data"""
+    current_volume: int = Field(..., description="Current volume")
+    avg_volume: int = Field(..., description="Average volume")
+    volume_ratio: float = Field(..., description="Volume ratio (current/avg)")
+    volume_trend: str = Field(..., description="Volume trend indicator")
+
+
+class BidAskImbalance(BaseModel):
+    """Bid-ask imbalance analysis"""
+    bid_volume: int = Field(..., description="Bid volume")
+    ask_volume: int = Field(..., description="Ask volume")
+    imbalance_ratio: float = Field(..., description="Imbalance ratio")
+    pressure: str = Field(..., description="Buying/selling pressure")
+
+
+class PriceMomentum(BaseModel):
+    """Price momentum analysis"""
+    daily_change: float = Field(..., description="Daily price change")
+    momentum_strength: str = Field(..., description="Momentum strength")
+    trend_direction: str = Field(..., description="Trend direction")
+
+
+class MarketIntelligence(BaseModel):
+    """Market intelligence data"""
+    symbol: str = Field(..., description="Stock symbol")
+    timestamp: datetime = Field(..., description="Analysis timestamp")
+    current_price: float = Field(..., description="Current price")
+    bid_price: float = Field(..., description="Bid price")
+    ask_price: float = Field(..., description="Ask price")
+    spread: float = Field(..., description="Bid-ask spread")
+    spread_pct: float = Field(..., description="Spread percentage")
+    volume_analysis: VolumeAnalysis = Field(..., description="Volume analysis")
+    bid_ask_imbalance: BidAskImbalance = Field(..., description="Bid-ask imbalance")
+    price_momentum: PriceMomentum = Field(..., description="Price momentum")
+
+
+class ComparativeAnalysis(BaseModel):
+    """Comparative analysis data"""
+    symbol: str = Field(..., description="Stock symbol")
+    timeframe: str = Field(..., description="Analysis timeframe")
+    timestamp: datetime = Field(..., description="Analysis timestamp")
+    comparison: Dict[str, Any] = Field(..., description="Benchmark comparisons")
+    summary: Dict[str, Any] = Field(..., description="Performance summary")

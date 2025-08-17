@@ -4,42 +4,52 @@ kind: Deployment
 metadata:
   name: {{ include "chart.fullname" . }}
   labels:
-    { { - include "chart.labels" . | nindent 4 } }
+    app: {{ include "chart.fullname" . }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.app.replicas }}
   selector:
     matchLabels:
-      { { - include "chart.labels" . | nindent 4 } }
+      app: {{ include "chart.fullname" . }}
   template:
     metadata:
       labels:
-        { { - include "chart.labels" . | nindent 4 } }
+        app: {{ include "chart.fullname" . }}
     spec:
+      {{- if .Values.redis.enabled }}
+      initContainers:
+        - name: wait-for-redis
+          image: busybox:1.35
+          command: ['sh', '-c', 'until nc -z {{ include "chart.fullname" . }}-redis {{ .Values.redis.port }}; do echo waiting for redis; sleep 2; done;']
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.httpPort }}
+              containerPort: {{ .Values.app.port }}
 
           env:
             {{- range $key, $val := .Values.env }}
             - name: {{ $key }}
               value: "{{ $val }}"
             {{- end }}
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_URL
+              value: "redis://{{ include "chart.fullname" . }}-redis:{{ .Values.redis.port }}"
+            {{- end }}
 
           readinessProbe:
             httpGet:
               path: /healthz
-              port: {{ .Values.service.httpPort }}
-            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
-            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+              port: {{ .Values.app.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 5
 
           livenessProbe:
             httpGet:
               path: /healthz
-              port: {{ .Values.service.httpPort }}
-            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
-            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+              port: {{ .Values.app.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
 

@@ -44,6 +44,25 @@ local-down: ## Stop and remove local dev containers
 	@echo "🛑 Stopping local dev services..."
 	docker-compose down
 
+# Multi-API Development
+# -------------------------------
+run: ## Run the Market Data API Platform (Multi-API Mode - Default)
+	@echo "🚀 Starting Market Data API Platform (Multi-API Mode)..."
+	@echo "📚 Single Swagger UI with API selector dropdown:"
+	@echo "   - Swagger UI: http://localhost:$(PORT)/market-data-api/docs"
+	@echo "   - Use dropdown in top right to switch between APIs"
+	@echo "   - Market Data API: Financial data and market intelligence"
+	@echo "   - Utils API: System performance and monitoring"
+	@echo "   - Root Info: http://localhost:$(PORT)/"
+	@echo ""
+	python -m src.app.main
+
+run-single-api: ## Run the single API version (legacy mode)
+	@echo "🚀 Starting Market Data API (Legacy Single API Mode)..."
+	@echo "📚 API Documentation: http://localhost:$(PORT)/market-data-api/docs"
+	@echo ""
+	python -m src.app.main
+
 # --------------------------------------------------------------
 # Docker
 # --------------------------------------------------------------

@@ -39,9 +39,21 @@ class HybridCache:
                 
         except Exception as e:
             self._redis_errors += 1
-            # REMOVE FALLBACK - let Redis failures surface
-            logger.error(f"Redis failed for {self.cache_name}: {key} - {e}")
-            raise
+            # Fall back to memory cache if Redis fails
+            logger.debug(f"Redis failed for {self.cache_name}: {key} - falling back to memory: {e}")
+        
+        # Fall back to memory cache
+        async with self._lock:
+            if key in self._memory_cache:
+                value, timestamp = self._memory_cache[key]
+                if datetime.now() - timestamp < self.ttl:
+                    self._cache_hits += 1
+                    self._memory_hits += 1
+                    logger.debug(f"Memory HIT for {self.cache_name}: {key}")
+                    return value
+                else:
+                    # Expired, remove it
+                    del self._memory_cache[key]
         
         self._cache_misses += 1
         logger.debug(f"Cache MISS for {self.cache_name}: {key}")
@@ -99,7 +111,7 @@ class HybridCache:
             redis_deleted = await redis_service.delete_pattern(pattern)
             deleted_count += redis_deleted
         except Exception as e:
-            logger.debug(f"Redis pattern delete failed for {self.cache_name}: {pattern} - {e}")
+            logger.debug(f"Redis delete pattern failed: {e}")
         
         return deleted_count
     

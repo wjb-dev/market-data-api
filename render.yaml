@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: market-data-api
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerCommand: uvicorn src.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: market-data-redis
+          property: connectionString
+      - key: REDIS_ENABLED
+        value: true
+      - key: SERVICE_NAME
+        value: market-data-api
+      - key: SERVICE_DESC
+        value: A stateless micro‑service delivering your dreams.
+      - key: API_VER
+        value: 0.1.0
+      - key: PORT
+        value: 8000
+      - key: ENVIRONMENT
+        value: production
+
+  - type: redis
+    name: market-data-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru

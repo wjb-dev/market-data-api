@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Market Data API - Performance Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            font-size: 1.2rem;
+            color: white;
+        }
+        
+        .card-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px 0;
+        }
+        
+        .metric-label {
+            color: #666;
+            font-size: 0.95rem;
+        }
+        
+        .metric-value {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #333;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-healthy { background-color: #4CAF50; }
+        .status-degraded { background-color: #FF9800; }
+        .status-unhealthy { background-color: #F44336; }
+        
+        .refresh-button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            margin-bottom: 20px;
+        }
+        
+        .refresh-button:hover {
+            transform: scale(1.05);
+        }
+        
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .error {
+            color: #F44336;
+            text-align: center;
+            padding: 20px;
+            background: #ffebee;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .uptime {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #4CAF50;
+        }
+        
+        .cache-hit-rate {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        
+        .hit-rate-high { color: #4CAF50; }
+        .hit-rate-medium { color: #FF9800; }
+        .hit-rate-low { color: #F44336; }
+        
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Market Data API</h1>
+            <p>Real-time Performance Dashboard</p>
+        </div>
+        
+        <div style="text-align: center; margin-bottom: 20px;">
+            <button class="refresh-button" onclick="refreshDashboard()">
+                🔄 Refresh Dashboard
+            </button>
+            <span id="last-updated" style="color: white; margin-left: 20px;"></span>
+        </div>
+        
+        <div class="dashboard-grid">
+            <!-- System Status Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: #4CAF50;">📊</div>
+                    <div class="card-title">System Status</div>
+                </div>
+                <div id="system-status">
+                    <div class="loading">Loading system status...</div>
+                </div>
+            </div>
+            
+            <!-- Performance Metrics Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: #2196F3;">⚡</div>
+                    <div class="card-title">Performance Metrics</div>
+                </div>
+                <div id="performance-metrics">
+                    <div class="loading">Loading performance metrics...</div>
+                </div>
+            </div>
+            
+            <!-- Cache Performance Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: #FF9800;">💾</div>
+                    <div class="card-title">Cache Performance</div>
+                </div>
+                <div id="cache-metrics">
+                    <div class="loading">Loading cache metrics...</div>
+                </div>
+            </div>
+            
+            <!-- Endpoint Performance Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon" style="background: #9C27B0;">🔗</div>
+                    <div class="card-title">Endpoint Performance</div>
+                </div>
+                <div id="endpoint-metrics">
+                    <div class="loading">Loading endpoint metrics...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api/v1';
+        
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error(`Error fetching ${endpoint}:`, error);
+                throw error;
+            }
+        }
+        
+        function updateLastUpdated() {
+            const now = new Date();
+            document.getElementById('last-updated').textContent = 
+                `Last updated: ${now.toLocaleTimeString()}`;
+        }
+        
+        function getStatusClass(status) {
+            switch(status.toLowerCase()) {
+                case 'healthy': return 'status-healthy';
+                case 'degraded': return 'status-degraded';
+                default: return 'status-unhealthy';
+            }
+        }
+        
+        function getHitRateClass(hitRate) {
+            if (hitRate >= 80) return 'hit-rate-high';
+            if (hitRate >= 60) return 'hit-rate-medium';
+            return 'hit-rate-low';
+        }
+        
+        async function updateSystemStatus() {
+            try {
+                const data = await fetchData('/monitoring/status');
+                const html = `
+                    <div class="metric">
+                        <span class="metric-label">Overall Status</span>
+                        <span class="metric-value">
+                            <span class="status-indicator ${getStatusClass(data.status)}"></span>
+                            ${data.status}
+                        </span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Uptime</span>
+                        <span class="metric-value uptime">${data.uptime}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Requests/Min</span>
+                        <span class="metric-value">${data.requests_per_minute}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Success Rate</span>
+                        <span class="metric-value">${data.success_rate}%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Avg Response Time</span>
+                        <span class="metric-value">${data.average_response_time}s</span>
+                    </div>
+                `;
+                document.getElementById('system-status').innerHTML = html;
+            } catch (error) {
+                document.getElementById('system-status').innerHTML = 
+                    '<div class="error">Failed to load system status</div>';
+            }
+        }
+        
+        async function updatePerformanceMetrics() {
+            try {
+                const data = await fetchData('/monitoring/performance');
+                const html = `
+                    <div class="metric">
+                        <span class="metric-label">Total Requests</span>
+                        <span class="metric-value">${data.system.total_requests}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Successful</span>
+                        <span class="metric-value">${data.system.successful_requests}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Failed</span>
+                        <span class="metric-value">${data.system.failed_requests}</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">P95 Response Time</span>
+                        <span class="metric-value">${data.system.p95_response_time}s</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">P99 Response Time</span>
+                        <span class="metric-value">${data.system.p99_response_time}s</span>
+                    </div>
+                `;
+                document.getElementById('performance-metrics').innerHTML = html;
+            } catch (error) {
+                document.getElementById('performance-metrics').innerHTML = 
+                    '<div class="error">Failed to load performance metrics</div>';
+            }
+        }
+        
+        async function updateCacheMetrics() {
+            try {
+                const data = await fetchData('/monitoring/caches');
+                let html = '';
+                
+                for (const [cacheName, cache] of Object.entries(data.caches)) {
+                    const hitRateClass = getHitRateClass(cache.hit_rate);
+                    html += `
+                        <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #f0f0f0;">
+                            <div style="font-weight: 600; color: #333; margin-bottom: 10px; text-transform: capitalize;">
+                                ${cacheName.replace('_', ' ')}
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Hit Rate</span>
+                                <span class="metric-value cache-hit-rate ${hitRateClass}">${cache.hit_rate}%</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Size</span>
+                                <span class="metric-value">${cache.size} items</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Memory</span>
+                                <span class="metric-value">${cache.memory_usage_mb} MB</span>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                if (html) {
+                    html += `
+                        <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #f0f0f0;">
+                            <div class="metric">
+                                <span class="metric-label">Overall Hit Rate</span>
+                                <span class="metric-value">${data.summary.overall_hit_rate}%</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Total Memory</span>
+                                <span class="metric-value">${data.summary.total_memory_mb} MB</span>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                document.getElementById('cache-metrics').innerHTML = html;
+            } catch (error) {
+                document.getElementById('cache-metrics').innerHTML = 
+                    '<div class="error">Failed to load cache metrics</div>';
+            }
+        }
+        
+        async function updateEndpointMetrics() {
+            try {
+                const data = await fetchData('/monitoring/endpoints');
+                let html = '';
+                
+                for (const [endpoint, metrics] of Object.entries(data.endpoints)) {
+                    html += `
+                        <div style="margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #f0f0f0;">
+                            <div style="font-weight: 600; color: #333; margin-bottom: 8px;">
+                                ${endpoint}
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Requests</span>
+                                <span class="metric-value">${metrics.count}</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Avg Time</span>
+                                <span class="metric-value">${metrics.avg_time}s</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Success Rate</span>
+                                <span class="metric-value">${((metrics.success_count / metrics.count) * 100).toFixed(1)}%</span>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                if (html) {
+                    html += `
+                        <div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #f0f0f0;">
+                            <div class="metric">
+                                <span class="metric-label">Most Used</span>
+                                <span class="metric-value">${data.summary.most_used_endpoint || 'N/A'}</span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Fastest</span>
+                                <span class="metric-value">${data.summary.fastest_endpoint || 'N/A'}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                document.getElementById('endpoint-metrics').innerHTML = html;
+            } catch (error) {
+                document.getElementById('endpoint-metrics').innerHTML = 
+                    '<div class="error">Failed to load endpoint metrics</div>';
+            }
+        }
+        
+        async function refreshDashboard() {
+            updateLastUpdated();
+            await Promise.all([
+                updateSystemStatus(),
+                updatePerformanceMetrics(),
+                updateCacheMetrics(),
+                updateEndpointMetrics()
+            ]);
+        }
+        
+        // Auto-refresh every 30 seconds
+        setInterval(refreshDashboard, 30000);
+        
+        // Initial load
+        refreshDashboard();
+    </script>
+</body>
+</html>

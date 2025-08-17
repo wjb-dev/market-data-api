@@ -10,6 +10,7 @@ from datetime import datetime
 from fastapi import APIRouter, status, HTTPException, Query, Depends, Response
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response as FastAPIResponse
+from typing import Dict, Any
 
 from src.app.services.articles import ArticlesService, ArticlesServiceError, get_articles_service
 from src.app.services.news_streaming import NewsStreamingService, get_news_streaming_service
@@ -41,17 +42,93 @@ def validate_date_format(date_str: str, param_name: str) -> str:
 @router.get(
     "/",
     response_model=ContentCollection,
-    summary="Get news articles from Alpaca Market Data API",
-    status_code=status.HTTP_200_OK,
-    description="Fetch financial news articles for specified symbols within a timeframe.",
+    summary="Get financial news articles",
+    description="""
+    Retrieve financial news articles from Alpaca Market Data API with advanced filtering and content processing.
+    
+    **News Features:**
+    - **Real-time Articles:** Latest financial news and market updates
+    - **Symbol Filtering:** News specific to stock symbols
+    - **Content Processing:** Clean HTML-to-text conversion for AI analysis
+    - **Rich Metadata:** Authors, summaries, related symbols, and sources
+    - **Pagination:** Efficient handling of large result sets
+    
+    **Content Processing:**
+    - **HTML Cleaning:** Removes markup for clean text analysis
+    - **Entity Decoding:** Converts HTML entities to readable text
+    - **Whitespace Normalization:** Consistent formatting for AI consumption
+    - **Symbol Extraction:** Identifies related stock symbols in articles
+    
+    **Use Cases:**
+    - AI sentiment analysis
+    - Market impact assessment
+    - Trading signal generation
+    - News-driven strategies
+    - Research and analysis
+    
+    **Data Source:** Alpaca News API (Benzinga)
+    **Update Frequency:** Real-time as news breaks
+    **Cache TTL:** 5 minutes for content, 1 minute for metadata
+    **Rate Limits:** 200 requests/minute (Alpaca free tier)
+    """,
     responses={
-        200: {"description": "Successfully retrieved articles"},
-        400: {"description": "Invalid request parameters"},
-        401: {"description": "Unauthorized - check API credentials"},
-        403: {"description": "Forbidden - check subscription plan"},
-        429: {"description": "Rate limit exceeded"},
-        500: {"description": "Internal server error"},
-    }
+        200: {
+            "description": "Successfully retrieved news articles",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "items": [
+                            {
+                                "id": "47167369",
+                                "headline": "David Tepper's Hedge Fund Bets On Intel, UnitedHealth",
+                                "author": "Chris Katje",
+                                "content": "The Appaloosa hedge fund, run by Carolina Panthers owner David Tepper...",
+                                "created_at": "2025-08-15T19:59:29Z",
+                                "summary": "David Tepper sold casino stocks and bought airline stocks...",
+                                "url": "https://www.benzinga.com/trading-ideas/long-ideas/25/08/47167369/...",
+                                "symbols": ["AAPL", "AMZN", "NVDA", "MSFT"],
+                                "source": "benzinga",
+                                "type": "news"
+                            }
+                        ],
+                        "next_page_token": "MTc1NTI4Nzk2OTAwMDAwMDAwMHw0NzE2NzM2OQ==",
+                        "timestamp": "2025-08-16T00:30:00Z"
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Invalid parameters or symbol format",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Invalid symbol format. Use uppercase letters only (e.g., AAPL, TSLA)"
+                    }
+                }
+            }
+        },
+        429: {
+            "description": "Rate limit exceeded",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Rate limited by Alpaca (reset=1755317724)"
+                    }
+                }
+            }
+        },
+        500: {
+            "description": "Failed to fetch news articles",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Failed to fetch news from Alpaca API"
+                    }
+                }
+            }
+        }
+    },
+    tags=["Articles"]
 )
 async def get_articles(
     symbols: str = Query(None, description="Comma-separated list of symbols (e.g., AAPL,TSLA)", min_length=1),
@@ -223,6 +300,7 @@ async def get_articles_by_symbol(
 
 @router.get(
     "/health",
+    response_model=Dict[str, Any],
     summary="Articles service health check",
     description="Check the health status of the articles service.",
 )
@@ -270,6 +348,7 @@ async def health_check(
 
 @router.get(
     "/cache/status",
+    response_model=Dict[str, Any],
     summary="Get news cache status and performance",
     description="Get comprehensive cache statistics and performance metrics.",
 )
@@ -306,6 +385,7 @@ async def get_cache_status(
 
 @router.delete(
     "/cache",
+    response_model=Dict[str, Any],
     summary="Clear all news caches",
     description="Clear all cached news data to force fresh API calls.",
 )
@@ -339,6 +419,7 @@ async def clear_all_caches(
 
 @router.delete(
     "/cache/{pattern}",
+    response_model=Dict[str, Any],
     summary="Clear specific cache entries",
     description="Clear cache entries matching a specific pattern.",
 )
@@ -376,6 +457,7 @@ async def clear_cache_pattern(
 
 @router.get(
     "/stream",
+    response_model=Dict[str, Any],
     summary="Stream real-time news",
     description="Stream real-time news articles using Server-Sent Events (SSE).",
 )

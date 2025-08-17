@@ -5,15 +5,14 @@ kind: Service
 metadata:
   name: {{ include "chart.fullname" . }}
   labels:
-    {{- include "chart.labels" . | nindent 4 }}
-  app.kubernetes.io/component: backend
+    app: {{ include "chart.fullname" . }}
 spec:
-  selector:
-    {{- include "chart.selectorLabels" . | nindent 4 }}
-  ports:
-    - name: http
-      port: {{ .Values.service.httpPort }}
-      targetPort: {{ .Values.service.targetPort }}
-      protocol: TCP
   type: ClusterIP
+  ports:
+    - port: {{ .Values.app.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: {{ include "chart.fullname" . }}
 

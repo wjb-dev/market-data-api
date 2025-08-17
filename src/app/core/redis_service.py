@@ -16,9 +16,17 @@ class RedisService:
         self._redis_client: Optional[redis.Redis] = None
         self._connection_pool: Optional[redis.ConnectionPool] = None
         self._lock = asyncio.Lock()
+        self._enabled = True
         
     async def _get_client(self) -> redis.Redis:
         """Get Redis client with connection pooling."""
+        # Check if Redis is enabled
+        settings = get_settings()
+        if not getattr(settings, 'redis_enabled', True):
+            self._enabled = False
+            logger.info("Redis is disabled - using no-op fallback")
+            raise Exception("Redis is disabled")
+            
         if self._redis_client is None:
             async with self._lock:
                 if self._redis_client is None:
@@ -47,6 +55,9 @@ class RedisService:
     
     async def get(self, key: str) -> Optional[Any]:
         """Get value from Redis with error handling."""
+        if not self._enabled:
+            return None
+            
         try:
             client = await self._get_client()
             value = await client.get(key)
@@ -59,6 +70,9 @@ class RedisService:
     
     async def set(self, key: str, value: Any, ttl_seconds: int = 300) -> bool:
         """Set value in Redis with TTL."""
+        if not self._enabled:
+            return True
+            
         try:
             client = await self._get_client()
             serialized = json.dumps(value, default=str)
@@ -70,6 +84,9 @@ class RedisService:
     
     async def delete(self, key: str) -> bool:
         """Delete key from Redis."""
+        if not self._enabled:
+            return True
+            
         try:
             client = await self._get_client()
             await client.delete(key)
@@ -80,6 +97,9 @@ class RedisService:
     
     async def delete_pattern(self, pattern: str) -> int:
         """Delete keys matching pattern."""
+        if not self._enabled:
+            return 0
+            
         try:
             client = await self._get_client()
             keys = await client.keys(pattern)
@@ -93,6 +113,9 @@ class RedisService:
     
     async def exists(self, key: str) -> bool:
         """Check if key exists."""
+        if not self._enabled:
+            return False
+            
         try:
             client = await self._get_client()
             return bool(await client.exists(key))
@@ -102,6 +125,9 @@ class RedisService:
     
     async def ttl(self, key: str) -> int:
         """Get TTL for key in seconds."""
+        if not self._enabled:
+            return -1
+            
         try:
             client = await self._get_client()
             return await client.ttl(key)
@@ -111,6 +137,9 @@ class RedisService:
     
     async def increment(self, key: str, amount: int = 1) -> int:
         """Increment counter."""
+        if not self._enabled:
+            return 0
+            
         try:
             client = await self._get_client()
             return await client.incrby(key, amount)
@@ -120,6 +149,9 @@ class RedisService:
     
     async def get_stats(self) -> Dict[str, Any]:
         """Get Redis performance statistics."""
+        if not self._enabled:
+            return {"status": "disabled"}
+            
         try:
             client = await self._get_client()
             info = await client.info()

@@ -1,30 +1,39 @@
-replicaCount: 1
+# Market Data API Helm Chart Values
 
+# Application settings
+app:
+  name: market-data-api
+  port: 8000
+  replicas: 1
 
-
-
+# Image settings
 image:
-  # repository will be built by your Makefile/Dockerfile
-  repository: "market-data-api"
-  tag: "local"
+  repository: market-data-api
+  tag: latest
   pullPolicy: IfNotPresent
 
-service:
-  targetPort: http
-  httpPort: 8000
+# Redis settings
+redis:
+  enabled: true
+  image: redis:7-alpine
+  port: 6379
+  persistence:
+    enabled: true
+    size: 1Gi
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
 
-probes:
-  readiness:
-    initialDelaySeconds: 15
-    periodSeconds: 5
-  liveness:
-    initialDelaySeconds: 15
-    periodSeconds: 20
-
+# Environment variables
 env:
   SERVICE_NAME: "market-data-api"
   SERVICE_DESC: "A stateless micro‑service delivering your dreams."
   API_VER: "0.1.0"
-  PORT: 8000
-  ENVIRONMENT: development
+  PORT: "8000"
+  ENVIRONMENT: "production"
+  REDIS_ENABLED: "true"
 
