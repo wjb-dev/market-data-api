@@ -4,8 +4,6 @@ Provides access to financial news articles and market content.
 """
 
 import logging
-import json
-import asyncio
 from datetime import datetime
 from fastapi import APIRouter, status, HTTPException, Query, Depends, Response
 from fastapi.responses import JSONResponse
@@ -13,7 +11,7 @@ from fastapi.responses import Response as FastAPIResponse
 from typing import Dict, Any
 
 from src.app.services.articles import ArticlesService, ArticlesServiceError, get_articles_service
-from src.app.services.news_streaming import NewsStreamingService, get_news_streaming_service
+
 from src.app.schemas.content import ContentCollection, ArticleQueryParams
 
 logger = logging.getLogger(__name__)
@@ -453,97 +451,3 @@ async def clear_cache_pattern(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to clear cache pattern"
         )
-
-
-@router.get(
-    "/stream",
-    response_model=Dict[str, Any],
-    summary="Stream real-time news",
-    description="Stream real-time news articles using Server-Sent Events (SSE).",
-)
-async def stream_news(
-    symbols: str = Query(None, description="Comma-separated list of symbols to filter by")
-):
-    """
-    Stream real-time news articles using Server-Sent Events.
-    
-    **Features:**
-    - Live news updates as they happen
-    - Symbol-specific filtering
-    - Real-time market intelligence
-    - Low-latency news delivery
-    
-    **Use Cases:**
-    - Real-time trading decisions
-    - News-driven alerts
-    - Market sentiment monitoring
-    - Breaking news notifications
-    
-    **Technical Details:**
-    - Uses Alpaca's WebSocket news stream
-    - Server-Sent Events for browser compatibility
-    - Automatic reconnection handling
-    - Symbol-based filtering
-    """
-    
-    from fastapi.responses import StreamingResponse
-    
-    # Parse symbols if provided
-    symbol_list = None
-    if symbols:
-        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
-    
-    async def news_event_stream():
-        """Generate Server-Sent Events for news stream."""
-        try:
-            # Add SSE headers
-            yield "data: {\"event\": \"connected\", \"message\": \"News stream connected\"}\n\n"
-            
-            # For now, return mock streaming data
-            # TODO: Integrate with real Alpaca news streaming
-            mock_news = [
-                {
-                    "event": "news",
-                    "data": {
-                        "id": "stream_1",
-                        "headline": "Real-time Market Update",
-                        "summary": "Live market data streaming...",
-                        "symbols": symbol_list or ["ALL"],
-                        "timestamp": datetime.now().isoformat()
-                    }
-                },
-                {
-                    "event": "news", 
-                    "data": {
-                        "id": "stream_2",
-                        "headline": "Breaking News Alert",
-                        "summary": "Important market development...",
-                        "symbols": symbol_list or ["ALL"],
-                        "timestamp": datetime.now().isoformat()
-                    }
-                }
-            ]
-            
-            for news_item in mock_news:
-                yield f"data: {json.dumps(news_item)}\n\n"
-                await asyncio.sleep(2)  # Simulate real-time updates
-                
-        except Exception as e:
-            logger.error(f"Error in news stream: {str(e)}")
-            error_data = {
-                "event": "error",
-                "message": f"Stream error: {str(e)}",
-                "timestamp": datetime.now().isoformat()
-            }
-            yield f"data: {json.dumps(error_data)}\n\n"
-    
-    return StreamingResponse(
-        news_event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Cache-Control"
-        }
-    )

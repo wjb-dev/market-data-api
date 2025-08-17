@@ -9,7 +9,7 @@ import time
 from src.app.core.config import get_alpaca
 from src.app.services.quotes_service import get_quotes_service
 from src.app.services.cache_service import get_quotes_cache
-from src.app.schemas.quote import Quote, QuoteData, MarketIntelligence, ComparativeAnalysis
+from src.app.schemas.quote import Quote, QuoteData, MarketIntelligence, ComparativeAnalysis, DailyChangeResponse, QuotesCacheStatusResponse
 
 
 logger = logging.getLogger(__name__)
@@ -174,10 +174,10 @@ async def get_current_quote(
 
 @router.get(
     "/{symbol}/change",
-    response_model=Dict[str, Any],
+    response_model=DailyChangeResponse,
     summary="Get daily percent change",
     description="Percent change vs. previous daily close (e.g., `1.23` = +1.23%).",
-    response_description="Raw percent change.",
+    response_description="Daily change data with percentage and absolute values.",
     tags=["Quotes"],
 )
 async def get_daily_change(
@@ -708,7 +708,7 @@ async def get_comparative_analysis(
 
 @router.get(
     "/cache/status",
-    response_model=Dict[str, Any],
+    response_model=QuotesCacheStatusResponse,
     summary="Get Cache Status",
     tags=["Quotes"]
 )

@@ -11,7 +11,14 @@ import time
 from datetime import datetime, timedelta
 
 from src.app.core.config import get_alpaca
-from src.app.schemas.candle import Candle
+from src.app.schemas.candle import (
+    Candle, 
+    TechnicalIndicatorsResponse, 
+    CandlestickPatternsResponse, 
+    PivotPointsResponse, 
+    MultiTimeframePivotsResponse,
+    CacheStatusResponse
+)
 from src.app.schemas.levels import SRResponse
 from src.app.services.candles_service import CandlesService, get_candles_service
 from src.app.services.cache_service import get_candles_cache
@@ -195,7 +202,7 @@ async def get_bars_multi(
 
 @router.get(
     "/{symbol}/levels",
-    response_model=Dict[str, Any],
+    response_model=SRResponse,
     summary="Get aggregated support/resistance",
     description=(
         "Aggregates S/R from multiple lookbacks (default **7/30/90** days).\n"
@@ -302,7 +309,7 @@ async def invalidate_cache(
 
 @router.get(
     "/{symbol}/indicators",
-    response_model=Dict[str, Any],
+    response_model=TechnicalIndicatorsResponse,
     summary="Get technical indicators",
     description="Calculate popular technical indicators including SMA, EMA, RSI, MACD, and Bollinger Bands.",
     response_description="Technical indicators with calculated values.",
@@ -385,7 +392,7 @@ async def get_technical_indicators(
 
 @router.get(
     "/{symbol}/patterns",
-    response_model=Dict[str, Any],
+    response_model=CandlestickPatternsResponse,
     summary="Get candlestick patterns",
     description="Detect popular candlestick patterns including Doji, Hammer, and Engulfing patterns.",
     response_description="Detected candlestick patterns with timestamps and confidence.",
@@ -466,7 +473,7 @@ async def get_candlestick_patterns(
 
 @router.get(
     "/{symbol}/pivots",
-    response_model=Dict[str, Any],
+    response_model=PivotPointsResponse,
     summary="Get pivot points",
     description="Calculate pivot points for support and resistance levels using multiple methods.",
     response_description="Pivot point levels for the specified timeframe and method.",
@@ -571,7 +578,7 @@ async def get_pivot_points(
 
 @router.get(
     "/{symbol}/pivots/multi",
-    response_model=Dict[str, Any],
+    response_model=MultiTimeframePivotsResponse,
     summary="Get multi-timeframe pivot points",
     description="Calculate pivot points for all timeframes (daily, weekly, monthly) using multiple methods.",
     response_description="Pivot point levels for all timeframes and methods.",
@@ -659,7 +666,7 @@ async def get_multi_timeframe_pivots(
 
 @router.get(
     "/cache/status",
-    response_model=Dict[str, Any],
+    response_model=CacheStatusResponse,
     summary="Get Cache Status",
     tags=["Candles"]
 )

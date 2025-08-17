@@ -86,3 +86,30 @@ class ComparativeAnalysis(BaseModel):
     timestamp: datetime = Field(..., description="Analysis timestamp")
     comparison: Dict[str, Any] = Field(..., description="Benchmark comparisons")
     summary: Dict[str, Any] = Field(..., description="Performance summary")
+
+
+# Daily Change Schema
+class DailyChangeResponse(BaseModel):
+    """Response model for daily percent change endpoint"""
+    symbol: str = Field(..., description="Stock symbol")
+    daily_change_percent: float = Field(..., description="Daily percent change vs previous close")
+    timestamp: datetime = Field(..., description="Response timestamp")
+    previous_close: Optional[float] = Field(None, description="Previous day's closing price")
+    current_price: Optional[float] = Field(None, description="Current price")
+    change_amount: Optional[float] = Field(None, description="Absolute price change amount")
+
+
+# Cache Status Schema
+class QuotesCacheStatusResponse(BaseModel):
+    """Response model for quotes cache status endpoint"""
+    cache_name: str = Field(..., description="Name of the cache")
+    cache_size: int = Field(..., description="Current cache size in memory")
+    ttl_seconds: int = Field(..., description="Time-to-live in seconds")
+    total_requests: int = Field(..., description="Total requests processed")
+    cache_hits: int = Field(..., description="Number of cache hits")
+    cache_misses: int = Field(..., description="Number of cache misses")
+    hit_rate_percent: float = Field(..., description="Cache hit rate percentage")
+    redis_hits: int = Field(..., description="Number of Redis cache hits")
+    memory_hits: int = Field(..., description="Number of memory cache hits")
+    redis_errors: int = Field(..., description="Number of Redis errors")
+    status: str = Field(..., description="Cache status")
