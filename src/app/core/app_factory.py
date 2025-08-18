@@ -1,7 +1,9 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+import time
 
 from src.app.core.config import get_settings
 from src.app.core.routers import include_all_routers
@@ -9,12 +11,32 @@ from src.app.core.runtime import runtime
 from src.app.swagger_config.configurator import custom_openapi
 from src.app.core.middleware import PerformanceMonitoringMiddleware, CacheMonitoringMiddleware
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     await runtime.start(settings, app)
     yield
     await runtime.destroy()
+
+async def log_request_middleware(request: Request, call_next):
+    """Log all incoming requests for debugging"""
+    start_time = time.time()
+    
+    # Log the incoming request
+    logger.info(f"🚀 {request.method} {request.url.path} - Client: {request.client.host if request.client else 'unknown'}")
+    
+    # Process the request
+    response = await call_next(request)
+    
+    # Log the response
+    process_time = time.time() - start_time
+    logger.info(f"✅ {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.3f}s")
+    
+    return response
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -62,6 +84,9 @@ def create_app() -> FastAPI:
         },
         lifespan=lifespan,
     )
+
+    # Add request logging middleware first
+    app.middleware("http")(log_request_middleware)
 
     # Add CORS middleware to fix browser CORS errors
     app.add_middleware(

@@ -8,7 +8,7 @@ def get_servers():
     settings = get_settings()
     if settings.environment == "production":
         return [
-            {"url": "https://market-data-api.vercel.app/", "description": "Production API - High availability, enterprise SLA"},
+            {"url": "https://market-data-api-qmex.onrender.com", "description": "Production API - High availability, enterprise SLA"},
         ]
     elif settings.environment == "staging":
         return [

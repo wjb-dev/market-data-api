@@ -46,23 +46,37 @@ class VolumeAnalysis(BaseModel):
     """Volume analysis data"""
     current_volume: int = Field(..., description="Current volume")
     avg_volume: int = Field(..., description="Average volume")
-    volume_ratio: float = Field(..., description="Volume ratio (current/avg)")
-    volume_trend: str = Field(..., description="Volume trend indicator")
+    ratio: float = Field(..., description="Volume ratio (current/avg)")
+    momentum: str = Field(..., description="Volume momentum indicator")
+    strength: str = Field(..., description="Volume strength indicator")
 
 
 class BidAskImbalance(BaseModel):
     """Bid-ask imbalance analysis"""
-    bid_volume: int = Field(..., description="Bid volume")
-    ask_volume: int = Field(..., description="Ask volume")
-    imbalance_ratio: float = Field(..., description="Imbalance ratio")
-    pressure: str = Field(..., description="Buying/selling pressure")
+    imbalance: str = Field(..., description="Imbalance type")
+    bid_ratio: float = Field(..., description="Bid ratio")
+    ask_ratio: float = Field(..., description="Ask ratio")
+    sentiment: str = Field(..., description="Buying/selling pressure")
+    total_size: int = Field(..., description="Total bid + ask size")
 
 
 class PriceMomentum(BaseModel):
     """Price momentum analysis"""
-    daily_change: float = Field(..., description="Daily price change")
-    momentum_strength: str = Field(..., description="Momentum strength")
-    trend_direction: str = Field(..., description="Trend direction")
+    momentum: str = Field(..., description="Price momentum")
+    change_pct: float = Field(..., description="Price change percentage")
+    intraday: str = Field(..., description="Intraday sentiment")
+    intraday_change: float = Field(..., description="Intraday change percentage")
+    current_price: float = Field(..., description="Current price")
+    prev_price: float = Field(..., description="Previous price")
+    open_price: float = Field(..., description="Open price")
+
+
+class Sentiment(BaseModel):
+    """Sentiment analysis data"""
+    overall: str = Field(..., description="Overall sentiment")
+    score: int = Field(..., description="Sentiment score")
+    factors: List[str] = Field(..., description="Sentiment factors")
+    confidence: str = Field(..., description="Confidence level")
 
 
 class MarketIntelligence(BaseModel):
@@ -74,9 +88,10 @@ class MarketIntelligence(BaseModel):
     ask_price: float = Field(..., description="Ask price")
     spread: float = Field(..., description="Bid-ask spread")
     spread_pct: float = Field(..., description="Spread percentage")
-    volume_analysis: VolumeAnalysis = Field(..., description="Volume analysis")
-    bid_ask_imbalance: BidAskImbalance = Field(..., description="Bid-ask imbalance")
-    price_momentum: PriceMomentum = Field(..., description="Price momentum")
+    volume_analysis: Optional[VolumeAnalysis] = Field(None, description="Volume analysis")
+    market_imbalance: Optional[BidAskImbalance] = Field(None, description="Bid-ask imbalance")
+    price_momentum: Optional[PriceMomentum] = Field(None, description="Price momentum")
+    sentiment: Sentiment = Field(..., description="Overall sentiment")
 
 
 class ComparativeAnalysis(BaseModel):
@@ -99,17 +114,16 @@ class DailyChangeResponse(BaseModel):
     change_amount: Optional[float] = Field(None, description="Absolute price change amount")
 
 
-# Cache Status Schema
 class QuotesCacheStatusResponse(BaseModel):
-    """Response model for quotes cache status endpoint"""
-    cache_name: str = Field(..., description="Name of the cache")
-    cache_size: int = Field(..., description="Current cache size in memory")
-    ttl_seconds: int = Field(..., description="Time-to-live in seconds")
-    total_requests: int = Field(..., description="Total requests processed")
-    cache_hits: int = Field(..., description="Number of cache hits")
-    cache_misses: int = Field(..., description="Number of cache misses")
+    """Response model for cache status endpoint"""
+    cache_name: str = Field(..., description="Cache name")
+    cache_size: int = Field(..., description="Number of items in memory cache")
+    ttl_seconds: float = Field(..., description="Cache TTL in seconds")
+    total_requests: int = Field(..., description="Total cache requests")
+    cache_hits: int = Field(..., description="Total cache hits")
+    cache_misses: int = Field(..., description="Total cache misses")
     hit_rate_percent: float = Field(..., description="Cache hit rate percentage")
-    redis_hits: int = Field(..., description="Number of Redis cache hits")
-    memory_hits: int = Field(..., description="Number of memory cache hits")
-    redis_errors: int = Field(..., description="Number of Redis errors")
+    redis_hits: int = Field(..., description="Redis cache hits")
+    memory_hits: int = Field(..., description="Memory cache hits")
+    redis_errors: int = Field(..., description="Redis errors count")
     status: str = Field(..., description="Cache status")
