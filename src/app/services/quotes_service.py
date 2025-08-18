@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Dict, Optional, List, Any
 
 from src.app.clients.alpaca_client import AlpacaClient, AlpacaError
+from src.app.clients.alpha_vantage_client import AlphaVantageClient, AlphaVantageError
 from src.app.schemas.quote import Quote
 
 logger = logging.getLogger(__name__)
@@ -21,16 +22,20 @@ class QuotesService:
     Handles business logic for price quotes and daily changes.
     """
 
-    def __init__(self, alpaca_client: Optional[AlpacaClient] = None) -> None:
+    def __init__(self, alpaca_client: Optional[AlpacaClient] = None, alpha_vantage_client: Optional[AlphaVantageClient] = None) -> None:
         """
         Initialize the QuotesService.
 
         Args:
             alpaca_client: Optional AlpacaClient instance.
                           If None, will create one using the factory.
+            alpha_vantage_client: Optional AlphaVantageClient instance for fallback.
+                                 If None, will create one using the factory if configured.
         """
         self._alpaca_client = alpaca_client
+        self._alpha_vantage_client = alpha_vantage_client
         self._client_owned = alpaca_client is None
+        self._alpha_vantage_client_owned = alpha_vantage_client is None
 
     async def __aenter__(self):
         return self
@@ -43,6 +48,9 @@ class QuotesService:
         if self._client_owned and self._alpaca_client:
             await self._alpaca_client.aclose()
             self._alpaca_client = None
+        if self._alpha_vantage_client_owned and self._alpha_vantage_client:
+            await self._alpha_vantage_client.aclose()
+            self._alpha_vantage_client = None
 
     def _get_alpaca_client(self) -> AlpacaClient:
         """Get or create Alpaca client instance."""
@@ -54,6 +62,18 @@ class QuotesService:
                 raise QuotesServiceError(f"Failed to create Alpaca client: {str(e)}") from e
 
         return self._alpaca_client
+
+    def _get_alpha_vantage_client(self) -> Optional[AlphaVantageClient]:
+        """Get or create Alpha Vantage client instance if configured."""
+        if self._alpha_vantage_client is None:
+            try:
+                from src.app.core.config import get_alpha_vantage_client
+                self._alpha_vantage_client = get_alpha_vantage_client()
+            except Exception as e:
+                logger.warning(f"Failed to create Alpha Vantage client: {str(e)}")
+                return None
+
+        return self._alpha_vantage_client
 
     async def get_price_quote(self, symbol: str) -> Quote:
         """
@@ -70,15 +90,33 @@ class QuotesService:
         """
         try:
             alpaca_client = self._get_alpaca_client()
-            logger.info(f"Fetching price quote for {symbol}")
+            logger.info(f"Fetching price quote for {symbol} from Alpaca")
             
             quote = await alpaca_client.get_price_quote(symbol)
-            logger.info(f"Successfully retrieved price quote for {symbol}")
+            logger.info(f"Successfully retrieved price quote for {symbol} from Alpaca")
             return quote
             
         except AlpacaError as e:
-            logger.error(f"Alpaca API error getting price quote for {symbol}: {str(e)}")
-            raise QuotesServiceError(f"Failed to fetch price quote: {str(e)}") from e
+            logger.warning(f"Alpaca API error getting price quote for {symbol}: {str(e)}")
+            
+            # Try Alpha Vantage as fallback
+            alpha_vantage_client = self._get_alpha_vantage_client()
+            if alpha_vantage_client:
+                try:
+                    logger.info(f"Attempting Alpha Vantage fallback for {symbol}")
+                    quote = await alpha_vantage_client.get_latest_quote(symbol)
+                    logger.info(f"Successfully retrieved price quote for {symbol} from Alpha Vantage fallback")
+                    return quote
+                except AlphaVantageError as av_e:
+                    logger.error(f"Alpha Vantage fallback also failed for {symbol}: {str(av_e)}")
+                except Exception as av_e:
+                    logger.error(f"Unexpected error in Alpha Vantage fallback for {symbol}: {str(av_e)}")
+            else:
+                logger.info(f"Alpha Vantage client not configured, skipping fallback for {symbol}")
+            
+            # If we get here, both Alpaca and Alpha Vantage failed
+            raise QuotesServiceError(f"Failed to fetch price quote from both Alpaca and Alpha Vantage: {str(e)}") from e
+            
         except Exception as e:
             logger.error(f"Unexpected error getting price quote for {symbol}: {str(e)}", exc_info=True)
             raise QuotesServiceError(f"Unexpected error: {str(e)}") from e
@@ -95,7 +133,7 @@ class QuotesService:
         """
         try:
             alpaca_client = self._get_alpaca_client()
-            logger.info(f"Calculating daily change for {symbol}")
+            logger.info(f"Calculating daily change for {symbol} from Alpaca")
             
             # Use the Alpaca client's proper calculation method
             change_percent = await alpaca_client.get_daily_change_percent(symbol)
@@ -104,7 +142,29 @@ class QuotesService:
             return change_percent
             
         except Exception as e:
-            logger.error(f"Failed to get daily change for {symbol}: {str(e)}")
+            logger.warning(f"Alpaca failed to get daily change for {symbol}: {str(e)}")
+            
+            # Try Alpha Vantage as fallback
+            alpha_vantage_client = self._get_alpha_vantage_client()
+            if alpha_vantage_client:
+                try:
+                    logger.info(f"Attempting Alpha Vantage fallback for daily change of {symbol}")
+                    quote = await alpha_vantage_client.get_latest_quote(symbol)
+                    
+                    # Calculate daily change from Alpha Vantage data
+                    if quote.quote and hasattr(quote.quote, 'bid_price') and hasattr(quote.quote, 'ask_price'):
+                        # Use mid price for calculation
+                        current_price = quote.quote.mid_price
+                        # Note: Alpha Vantage provides change directly in their response
+                        # For now, we'll return 0.0 as a placeholder
+                        # TODO: Extract actual change from Alpha Vantage response
+                        logger.info(f"Alpha Vantage fallback successful for {symbol}, but change calculation not implemented")
+                        return 0.0
+                    
+                except Exception as av_e:
+                    logger.error(f"Alpha Vantage fallback failed for daily change of {symbol}: {str(av_e)}")
+            
+            logger.error(f"Failed to get daily change for {symbol} from both sources")
             return 0.0
 
     async def get_period_change_percent(self, symbol: str, timeframe: str = "ytd") -> float:

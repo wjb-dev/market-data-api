@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime
 from fastapi import APIRouter, Query, Depends, HTTPException, status, Path, Response
 from fastapi.responses import JSONResponse
 from typing import List, Dict, Any, Optional
@@ -11,7 +9,7 @@ import time
 from src.app.core.config import get_alpaca
 from src.app.services.quotes_service import get_quotes_service
 from src.app.services.cache_service import get_quotes_cache
-from src.app.schemas.quote import Quote, QuoteData, MarketIntelligence, ComparativeAnalysis, DailyChangeResponse, QuotesCacheStatusResponse, Sentiment
+from src.app.schemas.quote import Quote, QuoteData, MarketIntelligence, ComparativeAnalysis, DailyChangeResponse, QuotesCacheStatusResponse
 
 
 logger = logging.getLogger(__name__)
@@ -333,34 +331,19 @@ async def get_batch_quotes(
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Build response with error handling
-        quotes = []
+        quotes = {}
         for symbol, result in zip(symbol_list, results):
             if isinstance(result, Exception):
                 logger.warning(f"Failed to fetch quote for {symbol}: {result}")
-                # Create error response that matches QuoteData structure
-                error_quote = QuoteData(
-                    timestamp=datetime.now(),
-                    ask_exchange="",
-                    ask_price=0.0,
-                    ask_size=0,
-                    bid_exchange="",
-                    bid_price=0.0,
-                    bid_size=0,
-                    conditions=[],
-                    tape="",
-                    spread=0.0,
-                    spread_pct=0.0,
-                    mid_price=0.0
-                )
-                quotes.append(QuoteData(symbol=symbol, quote=error_quote, status="error", timestamp=datetime.now()))
+                quotes[symbol] = {"error": str(result)}
             else:
-                quotes.append(result)
+                quotes[symbol] = result.model_dump(mode='json')
         
         # Cache the result for future requests
-        await quote_cache.set(cache_key, [q.model_dump(mode='json') for q in quotes])
+        await quote_cache.set(cache_key, quotes)
         
         set_rate_limit_headers(resp)
-        return JSONResponse(content=[q.model_dump(mode='json') for q in quotes], headers={"X-Cache": "MISS"})
+        return JSONResponse(content=quotes, headers={"X-Cache": "MISS"})
         
     except Exception as e:
         # REMOVE FALLBACK - let errors surface
@@ -368,12 +351,11 @@ async def get_batch_quotes(
         raise
 
 # ---- shared headers ----
-def set_rate_limit_headers(resp: Optional[Response], limit: int = 60, remaining: int = 59, reset_seconds: int = 60):
-    if resp is not None:
-        now_epoch = int(time.time())
-        resp.headers["X-RateLimit-Limit"] = str(limit)
-        resp.headers["X-RateLimit-Remaining"] = str(remaining)
-        resp.headers["X-RateLimit-Reset"] = str(now_epoch + reset_seconds)
+def set_rate_limit_headers(resp: Response, limit: int = 60, remaining: int = 59, reset_seconds: int = 60):
+    now_epoch = int(time.time())
+    resp.headers["X-RateLimit-Limit"] = str(limit)
+    resp.headers["X-RateLimit-Remaining"] = str(remaining)
+    resp.headers["X-RateLimit-Reset"] = str(now_epoch + reset_seconds)
 
 # ---- cache management ----
 @router.delete("/cache/{symbol}", tags=["Quotes"])
@@ -494,9 +476,6 @@ async def invalidate_cache(
 )
 async def get_market_intelligence(
     symbol: str = Path(..., description="Ticker symbol (e.g., `AAPL`, `SPY`).", examples={"ex1": {"value": "AAPL"}}),
-    include_volume: bool = Query(True, description="Include volume analysis"),
-    include_imbalance: bool = Query(True, description="Include bid-ask imbalance analysis"),
-    include_momentum: bool = Query(True, description="Include price momentum analysis"),
     resp: Response = None,
     svc = Depends(get_quotes_service),
 ):
@@ -520,7 +499,7 @@ async def get_market_intelligence(
     - Risk assessment
     """
     # Check cache first for ultra-fast responses
-    cache_key = f"intelligence:{symbol.upper()}:v{int(include_volume)}:i{int(include_imbalance)}:m{int(include_momentum)}"
+    cache_key = f"intelligence:{symbol.upper()}:{include_volume}:{include_imbalance}:{include_momentum}"
     cached_data = await quote_cache.get(cache_key)
     if cached_data:
         set_rate_limit_headers(resp)
@@ -536,11 +515,14 @@ async def get_market_intelligence(
             include_momentum=include_momentum
         )
         
-        # Cache the result for future requests (shorter TTL for real-time data)
-        await quote_cache.set(cache_key, result, ttl_seconds=10)  # 10 seconds for real-time data
+        # Ensure result is JSON serializable by converting datetime objects
+        serializable_result = _make_json_serializable(result)
+        
+        # Cache the serializable result for future requests (shorter TTL for real-time data)
+        await quote_cache.set(cache_key, serializable_result, ttl_seconds=10)  # 10 seconds for real-time data
         
         set_rate_limit_headers(resp)
-        return result
+        return JSONResponse(content=serializable_result, headers={"X-Cache": "MISS"})
         
     except Exception as e:
         # Return cached data if available, even if expired
@@ -648,9 +630,6 @@ async def get_market_intelligence(
 )
 async def get_comparative_analysis(
     symbol: str = Path(..., description="Ticker symbol to analyze (e.g., `AAPL`, `TSLA`).", examples={"ex1": {"value": "AAPL"}}),
-    benchmarks: str = Query("SPY,QQQ,IWM", description="Comma-separated list of benchmark symbols"),
-    metrics: str = Query("price_change,relative_strength", description="Comma-separated list of metrics to compare"),
-    timeframe: str = Query("ytd", description="Timeframe for comparison (ytd, quarterly, monthly)"),
     resp: Response = None,
     svc = Depends(get_quotes_service),
 ):
@@ -679,7 +658,7 @@ async def get_comparative_analysis(
     - Market timing decisions
     """
     # Check cache first for ultra-fast responses
-    cache_key = f"compare:{symbol.upper()}:{benchmarks.replace(',', '_')}:{metrics.replace(',', '_')}:{timeframe}"
+    cache_key = f"compare:{symbol.upper()}:{benchmarks}:{metrics}:{timeframe}"
     cached_data = await quote_cache.get(cache_key)
     if cached_data:
         set_rate_limit_headers(resp)
@@ -716,11 +695,14 @@ async def get_comparative_analysis(
             timeframe=timeframe
         )
         
-        # Cache the result for future requests
-        await quote_cache.set(cache_key, result, ttl_seconds=30)  # 30 seconds for comparative data
+        # Ensure result is JSON serializable by converting datetime objects
+        serializable_result = _make_json_serializable(result)
+        
+        # Cache the serializable result for future requests
+        await quote_cache.set(cache_key, serializable_result, ttl_seconds=30)  # 30 seconds for comparative data
         
         set_rate_limit_headers(resp)
-        return result
+        return JSONResponse(content=serializable_result, headers={"X-Cache": "MISS"})
         
     except HTTPException:
         raise

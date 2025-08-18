@@ -50,6 +50,40 @@ class AlpacaClient:
     async def aclose(self) -> None:
         await self._alpaca_client.aclose()
 
+    def _is_data_stale(self, timestamp: datetime) -> bool:
+        """
+        Check if the data timestamp is older than the last valid trading day.
+        
+        Args:
+            timestamp: The timestamp to check
+            
+        Returns:
+            bool: True if data is stale, False if fresh
+        """
+        try:
+            from datetime import datetime, timezone, timedelta
+            
+            # Get current time in UTC
+            now = datetime.now(timezone.utc)
+            
+            # Calculate how old the data is
+            data_age = now - timestamp
+            
+            # Check if data is older than 24 hours (conservative threshold)
+            # This will catch data from previous trading days
+            if data_age > timedelta(hours=24):
+                logger.info(f"Data is {data_age.total_seconds() / 3600:.1f} hours old")
+                return True
+            
+            # Additional check: if data is from a weekend or holiday, it's stale
+            # For now, we'll use the 24-hour threshold as it's more reliable
+            return False
+            
+        except Exception as e:
+            logger.warning(f"Error checking data staleness: {e}")
+            # If we can't determine staleness, assume it's fresh
+            return False
+
     # ---- Public API -----------------------------------------------------
 
     async def get_latest_quote(self, symbol: str) -> Quote:
@@ -158,6 +192,11 @@ class AlpacaClient:
             spread_pct = (spread / bid_price * 100) if bid_price > 0 else None
             mid_price = (ask_price + bid_price) / 2
             
+            # Check if data is stale (older than last valid trading day)
+            if self._is_data_stale(timestamp):
+                logger.warning(f"Quote data for {symbol} is stale (timestamp: {timestamp}), will trigger fallback")
+                raise AlpacaError(f"Quote data for {symbol} is stale (timestamp: {timestamp}). This symbol may be delisted, inactive, or have market data issues.")
+            
             from src.app.schemas.quote import QuoteData
             return Quote(
                 symbol=symbol.upper(),
@@ -227,6 +266,12 @@ class AlpacaClient:
             spread = ask_price - bid_price
             spread_pct = (spread / bid_price * 100) if bid_price > 0 else None
             mid_price = (ask_price + bid_price) / 2
+            
+            # Check if data is stale (older than last valid trading day)
+            snapshot_timestamp = _coerce_ts(latest_trade.get("t") or latest_quote.get("t"))
+            if self._is_data_stale(snapshot_timestamp):
+                logger.warning(f"Snapshot data for {symbol} is stale (timestamp: {snapshot_timestamp}), will trigger fallback")
+                raise AlpacaError(f"Snapshot data for {symbol} is stale (timestamp: {snapshot_timestamp}). This symbol may be delisted, inactive, or have market data issues.")
             
             from src.app.schemas.quote import QuoteData
             return Quote(
@@ -443,6 +488,7 @@ class AlpacaClient:
         out: List[Candle] = []
         page_token: Optional[str] = None
         prev_close: Optional[float] = None
+        latest_timestamp: Optional[datetime] = None
 
         while True:
             if page_token:
@@ -466,9 +512,10 @@ class AlpacaClient:
                 else:
                     change_percent = 0.0  # First bar or invalid previous close
                 
+                current_timestamp = _to_dt(b.get("t"))
                 out.append(
                     Candle(
-                        timestamp=_to_dt(b.get("t")),
+                        timestamp=current_timestamp,
                         open=float(b["o"]),
                         high=float(b["h"]),
                         low=float(b["l"]),
@@ -482,9 +529,19 @@ class AlpacaClient:
                 # Update previous close for next iteration
                 prev_close = current_close
                 
+                # Track the latest timestamp for stale data validation
+                if latest_timestamp is None or current_timestamp > latest_timestamp:
+                    latest_timestamp = current_timestamp
+                
             page_token = data.get("next_page_token") or data.get("nextPageToken")
             if not page_token or len(out) >= limit:
                 break
+
+        # Check if the most recent bar data is stale
+        if out and latest_timestamp:
+            if self._is_data_stale(latest_timestamp):
+                logger.warning(f"Bar data for {symbol} is stale (latest timestamp: {latest_timestamp}), will trigger fallback")
+                raise AlpacaError(f"Bar data for {symbol} is stale (latest timestamp: {latest_timestamp}). This symbol may be delisted, inactive, or have market data issues.")
 
         return out
 
