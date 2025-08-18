@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 
 from src.app.clients.alpaca_client import AlpacaClient
+from src.app.clients.alpha_vantage_client import AlphaVantageClient
 from src.app.services.candles_service import CandlesService
 from src.app.services.quotes_service import QuotesService
 
@@ -25,6 +26,11 @@ class Settings(BaseSettings):
     alpaca_feed: str = Field(default="iex", alias="ALPACA_FEED", description="Data feed type: iex (free) or sip (pro)")
     alpaca_timeout: float = Field(default=8.0, alias="ALPACA_TIMEOUT")
     
+    # Alpha Vantage API settings (fallback for stale data)
+    alpha_vantage_api_key: Optional[str] = Field(default=None, alias="ALPHA_VANTAGE_API_KEY", description="Alpha Vantage API key for fallback quotes")
+    alpha_vantage_base_url: str = Field(default="https://www.alphavantage.co/query", alias="ALPHA_VANTAGE_BASE_URL")
+    alpha_vantage_timeout: float = Field(default=8.0, alias="ALPHA_VANTAGE_TIMEOUT")
+    
     # Redis settings
     redis_url: str = Field(default="redis://localhost:6379", alias="REDIS_URL", description="Redis connection URL")
     redis_enabled: bool = Field(default=True, alias="REDIS_ENABLED", description="Enable Redis caching")
@@ -37,6 +43,7 @@ class Settings(BaseSettings):
 # Global instances
 _settings: Optional[Settings] = None
 _alpaca_client: Optional[AlpacaClient] = None
+_alpha_vantage_client: Optional[AlphaVantageClient] = None
 
 
 def get_settings() -> Settings:
@@ -62,14 +69,31 @@ def get_alpaca_client() -> AlpacaClient:
     return _alpaca_client
 
 
+def get_alpha_vantage_client() -> Optional[AlphaVantageClient]:
+    """Get or create the singleton AlphaVantageClient instance if API key is configured."""
+    global _alpha_vantage_client
+    if _alpha_vantage_client is None:
+        settings = get_settings()
+        if settings.alpha_vantage_api_key:
+            _alpha_vantage_client = AlphaVantageClient(
+                api_key=settings.alpha_vantage_api_key,
+                base_url=settings.alpha_vantage_base_url,
+                timeout=settings.alpha_vantage_timeout,
+            )
+    return _alpha_vantage_client
+
+
 def get_alpaca() -> CandlesService:
     """Get CandlesService with singleton AlpacaClient (default service)."""
     return CandlesService(alpaca_client=get_alpaca_client())
 
 
 def get_quotes_service() -> QuotesService:
-    """Get QuotesService with singleton AlpacaClient."""
-    return QuotesService(alpaca_client=get_alpaca_client())
+    """Get QuotesService with singleton AlpacaClient and optional AlphaVantageClient."""
+    return QuotesService(
+        alpaca_client=get_alpaca_client(),
+        alpha_vantage_client=get_alpha_vantage_client()
+    )
 
 
 async def cleanup_alpaca_client():
@@ -78,3 +102,11 @@ async def cleanup_alpaca_client():
     if _alpaca_client:
         await _alpaca_client.aclose()
         _alpaca_client = None
+
+
+async def cleanup_alpha_vantage_client():
+    """Clean up the singleton AlphaVantageClient instance."""
+    global _alpha_vantage_client
+    if _alpha_vantage_client:
+        await _alpha_vantage_client.aclose()
+        _alpha_vantage_client = None

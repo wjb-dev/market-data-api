@@ -50,6 +50,41 @@ class AlpacaClient:
     async def aclose(self) -> None:
         await self._alpaca_client.aclose()
 
+    def _is_data_stale(self, timestamp: datetime) -> bool:
+        """
+        Check if the data timestamp is older than the last valid trading day.
+        
+        Args:
+            timestamp: The timestamp to check
+            
+        Returns:
+            bool: True if data is stale, False if fresh
+        """
+        try:
+            from datetime import datetime, timezone, timedelta
+            
+            # Get current time in UTC
+            now = datetime.now(timezone.utc)
+            
+            # Calculate how old the data is
+            data_age = now - timestamp
+            
+            logger.info(f"Stale check: now={now}, timestamp={timestamp}, age={data_age.total_seconds() / 3600:.1f} hours")
+            
+            # Check if data is older than 48 hours (2 days) to account for weekends
+            # This allows Friday data to be valid on Sunday
+            if data_age > timedelta(hours=48):
+                logger.info(f"Data is {data_age.total_seconds() / 3600:.1f} hours old - MARKING AS STALE")
+                return True
+            
+            logger.info(f"Data is {data_age.total_seconds() / 3600:.1f} hours old - MARKING AS FRESH")
+            return False
+            
+        except Exception as e:
+            logger.warning(f"Error checking data staleness: {e}")
+            # If we can't determine staleness, assume it's fresh
+            return False
+
     # ---- Public API -----------------------------------------------------
 
     async def get_latest_quote(self, symbol: str) -> Quote:
@@ -157,6 +192,16 @@ class AlpacaClient:
             spread = ask_price - bid_price
             spread_pct = (spread / bid_price * 100) if bid_price > 0 else None
             mid_price = (ask_price + bid_price) / 2
+            
+            # Check if data is stale (older than last valid trading day)
+            logger.info(f"Checking if data for {symbol} is stale. Timestamp: {timestamp}")
+            is_stale = self._is_data_stale(timestamp)
+            print(f"Stale check result for {symbol}: {is_stale}")
+            logger.info(f"Stale check result for {symbol}: {is_stale}")
+            
+            if is_stale:
+                logger.warning(f"Quote data for {symbol} is stale (timestamp: {timestamp}), will trigger fallback")
+                raise AlpacaError(f"Quote data for {symbol} is stale (timestamp: {timestamp}). This symbol may be delisted, inactive, or have market data issues.")
             
             from src.app.schemas.quote import QuoteData
             return Quote(
